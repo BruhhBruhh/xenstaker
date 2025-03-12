@@ -1,356 +1,59 @@
-import React, { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
-
-const XENStakingDashboard = () => {
-  // State variables
-  const [account, setAccount] = useState('');
-  const [provider, setProvider] = useState(null);
-  const [contract, setContract] = useState(null);
-  const [currentStake, setCurrentStake] = useState(null);
-  const [balance, setBalance] = useState('0');
-  const [stakeAmount, setStakeAmount] = useState('');
-  const [stakeTerm, setStakeTerm] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [currentAPY, setCurrentAPY] = useState(0);
-  const [stakeHistory, setStakeHistory] = useState([]);
-  const [networkName, setNetworkName] = useState('');
-
-  // cbXEN Contract details
-  const contractAddress = '0xffcbF84650cE02DaFE96926B37a0ac5E34932fa5';
-  const contractABI = [
-    // ABI functions necessary for our dashboard
-    "function getUserStake() external view returns (tuple(uint256 term, uint256 maturityTs, uint256 amount, uint256 apy))",
-    "function balanceOf(address account) view returns (uint256)",
-    "function stake(uint256 amount, uint256 term) external",
-    "function withdraw() external",
-    "function getCurrentAPY() external view returns (uint256)",
-    "function symbol() external view returns (string)",
-    "function decimals() external view returns (uint8)"
-  ];
-
-  // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      setLoading(true);
-      if (window.ethereum) {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        const signer = provider.getSigner();
-        const address = await signer.getAddress();
-        const network = await provider.getNetwork();
-        setNetworkName(network.name);
-        
-        const xenContract = new ethers.Contract(contractAddress, contractABI, signer);
-        
-        setProvider(provider);
-        setAccount(address);
-        setContract(xenContract);
-
-        // Listen for account changes
-        window.ethereum.on('accountsChanged', (accounts) => {
-          setAccount(accounts[0]);
-        });
-      } else {
-        alert("Please install MetaMask or another Web3 wallet!");
-      }
-      setLoading(false);
-    } catch (error) {
-      console.error("Error connecting wallet:", error);
-      setLoading(false);
-    }
-  };
-
-  // Load user stake info
-  const loadUserStakeInfo = async () => {
-    if (contract && account) {
-      try {
-        setLoading(true);
-        const userStake = await contract.getUserStake();
-        const balanceWei = await contract.balanceOf(account);
-        const decimals = await contract.decimals();
-        const balanceFormatted = ethers.utils.formatUnits(balanceWei, decimals);
-        const currentAPY = await contract.getCurrentAPY();
-        
-        setCurrentStake({
-          term: userStake.term.toNumber(),
-          maturityTs: userStake.maturityTs.toNumber() * 1000, // Convert to milliseconds
-          amount: ethers.utils.formatUnits(userStake.amount, decimals),
-          apy: userStake.apy.toNumber()
-        });
-        
-        setBalance(balanceFormatted);
-        setCurrentAPY(currentAPY.toNumber());
-        
-        // Simulate stake history for demo
-        if (stakeHistory.length === 0) {
-          generateDemoStakeHistory();
-        }
-        
-        setLoading(false);
-      } catch (error) {
-        console.error("Error loading stake info:", error);
-        setLoading(false);
-      }
-    }
-  };
-
-  // Create a new stake
-  const createStake = async () => {
-    if (contract && stakeAmount && stakeTerm) {
-      try {
-        setLoading(true);
-        const decimals = await contract.decimals();
-        const amountWei = ethers.utils.parseUnits(stakeAmount, decimals);
-        const tx = await contract.stake(amountWei, stakeTerm);
-        await tx.wait();
-        
-        alert("Stake created successfully!");
-        loadUserStakeInfo();
-        setStakeAmount('');
-        setLoading(false);
-      } catch (error) {
-        console.error("Error creating stake:", error);
-        alert("Error creating stake: " + (error.message || error));
-        setLoading(false);
-      }
-    }
-  };
-
-  // Withdraw completed stake
-  const withdrawStake = async () => {
-    if (contract && currentStake) {
-      try {
-        setLoading(true);
-        const tx = await contract.withdraw();
-        await tx.wait();
-        
-        alert("Stake withdrawn successfully!");
-        loadUserStakeInfo();
-        setLoading(false);
-      } catch (error) {
-        console.error("Error withdrawing stake:", error);
-        alert("Error withdrawing stake: " + (error.message || error));
-        setLoading(false);
-      }
-    }
-  };
-
-  // Generate demo stake history
-  const generateDemoStakeHistory = () => {
-    const now = new Date().getTime();
-    const day = 24 * 60 * 60 * 1000;
-    
-    const history = [
-      {
-        startDate: new Date(now - 90 * day).toLocaleDateString(),
-        endDate: new Date(now - 60 * day).toLocaleDateString(),
-        amount: "100,000,000",
-        term: 30,
-        apy: 14,
-        reward: "1,150,684.93",
-        status: "Completed"
-      },
-      {
-        startDate: new Date(now - 59 * day).toLocaleDateString(),
-        endDate: new Date(now - 30 * day).toLocaleDateString(),
-        amount: "200,000,000",
-        term: 29,
-        apy: 14,
-        reward: "2,230,136.99",
-        status: "Completed"
-      }
-    ];
-    
-    setStakeHistory(history);
-  };
-
-  // Calculate expected yield
-  const calculateExpectedYield = (amount, apy, term) => {
-    const dailyRate = apy / 365 / 100;
-    const dailyYield = amount * dailyRate;
-    return (dailyYield * term).toFixed(2);
-  };
-
-  // Format timestamp to date string
-  const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleDateString();
-  };
-
-  // Load data when contract and account are available
-  useEffect(() => {
-    if (contract && account) {
-      loadUserStakeInfo();
-    }
-  }, [contract, account]);
-
-  return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-center">cbXEN Staking Dashboard</h1>
-        
-        {/* Wallet Connection */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          {!account ? (
-            <button 
-              onClick={connectWallet} 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded"
-              disabled={loading}
-            >
-              {loading ? "Connecting..." : "Connect Wallet"}
-            </button>
-          ) : (
-            <div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-gray-600">Connected to {networkName}</p>
-                  <p className="font-medium">{account.slice(0, 6)}...{account.slice(-4)}</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>cbXEN Staking Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" type="application/javascript"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen p-4">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-3xl font-bold mb-6 text-center">cbXEN Staking Dashboard</h1>
+            
+            <!-- Wallet Connection -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <button id="connectButton" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded">
+                    Connect Wallet
+                </button>
+                <div id="accountInfo" class="hidden">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm text-gray-600">Connected to <span id="networkName"></span></p>
+                            <p class="font-medium" id="accountAddress"></p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm text-gray-600">Your cbXEN Balance</p>
+                            <p class="font-medium" id="tokenBalance">0</p>
+                        </div>
+                    </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">Your cbXEN Balance</p>
-                  <p className="font-medium">{parseFloat(balance).toLocaleString()} cbXEN</p>
-                </div>
-              </div>
             </div>
-          )}
+            
+            <!-- These sections will be populated by JavaScript -->
+            <div id="dashboardContent" class="hidden">
+                <!-- Current Stake -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Current Stake</h2>
+                    <div id="currentStakeInfo"></div>
+                </div>
+                
+                <!-- Create New Stake -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Create New Stake</h2>
+                    <div id="newStakeForm"></div>
+                </div>
+                
+                <!-- Stake History -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4">Stake History</h2>
+                    <div id="stakeHistory"></div>
+                </div>
+            </div>
         </div>
-        
-        {account && (
-          <>
-            {/* Current Stake */}
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Current Stake</h2>
-              {currentStake && currentStake.amount !== "0.0" ? (
-                <div>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Amount Staked</p>
-                      <p className="font-medium">{parseFloat(currentStake.amount).toLocaleString()} cbXEN</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Term</p>
-                      <p className="font-medium">{currentStake.term} days</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">APY</p>
-                      <p className="font-medium">{currentStake.apy}%</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Maturity Date</p>
-                      <p className="font-medium">{formatTimestamp(currentStake.maturityTs)}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600">Expected Yield</p>
-                    <p className="font-medium">{calculateExpectedYield(parseFloat(currentStake.amount), currentStake.apy, currentStake.term)} cbXEN</p>
-                  </div>
-                  
-                  <button 
-                    onClick={withdrawStake} 
-                    className={`w-full ${new Date().getTime() >= currentStake.maturityTs ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'} text-white font-semibold py-2 px-4 rounded`}
-                    disabled={new Date().getTime() < currentStake.maturityTs || loading}
-                  >
-                    {loading ? "Processing..." : new Date().getTime() >= currentStake.maturityTs ? "Withdraw Stake" : `Available in ${Math.ceil((currentStake.maturityTs - new Date().getTime()) / (1000 * 60 * 60 * 24))} days`}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-gray-600">You have no active stakes</p>
-              )}
-            </div>
-            
-            {/* Create New Stake */}
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4">Create New Stake</h2>
-              {!currentStake || currentStake.amount === "0.0" ? (
-                <div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Amount (cbXEN)</label>
-                    <input 
-                      type="number" 
-                      value={stakeAmount} 
-                      onChange={(e) => setStakeAmount(e.target.value)}
-                      placeholder="Enter amount to stake" 
-                      className="w-full p-2 border border-gray-300 rounded" 
-                    />
-                  </div>
-                  
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Term (days)</label>
-                    <input 
-                      type="number" 
-                      value={stakeTerm} 
-                      onChange={(e) => setStakeTerm(parseInt(e.target.value) || 1)}
-                      min="1" 
-                      className="w-full p-2 border border-gray-300 rounded" 
-                    />
-                  </div>
-                  
-                  {stakeAmount && stakeTerm ? (
-                    <div className="mb-4 p-3 bg-gray-100 rounded">
-                      <p className="text-sm text-gray-600">Current APY: {currentAPY}%</p>
-                      <p className="text-sm text-gray-600">Expected Yield: {calculateExpectedYield(parseFloat(stakeAmount), currentAPY, stakeTerm)} cbXEN</p>
-                      <p className="text-sm text-gray-600">Maturity Date: {formatTimestamp(new Date().getTime() + stakeTerm * 24 * 60 * 60 * 1000)}</p>
-                    </div>
-                  ) : null}
-                  
-                  <button 
-                    onClick={createStake} 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded"
-                    disabled={!stakeAmount || !stakeTerm || loading}
-                  >
-                    {loading ? "Processing..." : "Create Stake"}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-gray-600">You already have an active stake. You can create a new stake after withdrawing your current one.</p>
-              )}
-            </div>
-            
-            {/* Stake History */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Stake History</h2>
-              {stakeHistory.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="p-2 text-left">Start Date</th>
-                        <th className="p-2 text-left">End Date</th>
-                        <th className="p-2 text-left">Amount</th>
-                        <th className="p-2 text-left">Term</th>
-                        <th className="p-2 text-left">APY</th>
-                        <th className="p-2 text-left">Reward</th>
-                        <th className="p-2 text-left">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stakeHistory.map((stake, index) => (
-                        <tr key={index} className="border-b">
-                          <td className="p-2">{stake.startDate}</td>
-                          <td className="p-2">{stake.endDate}</td>
-                          <td className="p-2">{stake.amount}</td>
-                          <td className="p-2">{stake.term} days</td>
-                          <td className="p-2">{stake.apy}%</td>
-                          <td className="p-2">{stake.reward}</td>
-                          <td className="p-2">
-                            <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${stake.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                              {stake.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-600">No stake history available</p>
-              )}
-            </div>
-          </>
-        )}
-      </div>
     </div>
-  );
-};
 
-export default XENStakingDashboard;
+    <script src="app.js"></script>
+</body>
+</html>
