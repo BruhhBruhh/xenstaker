@@ -1,18 +1,11 @@
-// Wait for ethers to be available
-function waitForEthers() {
-  if (typeof ethers !== 'undefined') {
-    // Initialize your app
-    init();
-  } else {
-    // Check again in 100ms
-    setTimeout(waitForEthers, 100);
-  }
+// Make sure ethers is available before proceeding
+console.log("App.js loaded, checking for ethers...");
+if (typeof ethers === 'undefined') {
+    console.error("Ethers library not found!");
+    alert("Critical error: Ethereum library not found. Please refresh the page.");
+} else {
+    console.log("Ethers library found, version:", ethers.version);
 }
-
-// Start checking
-waitForEthers();
-
-// Then place your init function and other code after this
 
 // Config
 const CONFIG = {
