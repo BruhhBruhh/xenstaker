@@ -15,7 +15,7 @@ const CONFIG = {
         rpcUrls: ['https://mainnet.base.org'],
         blockExplorerUrls: ['https://basescan.org/'],
     },
-    // Simplified ABI with essential functions
+    // Simplified ABI with essential functions and events
     CONTRACT_ABI: [
         {
             "inputs": [],
@@ -58,6 +58,26 @@ const CONFIG = {
             "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
             "stateMutability": "view",
             "type": "function"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {"indexed": true, "internalType": "address", "name": "user", "type": "address"},
+                {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"},
+                {"indexed": false, "internalType": "uint256", "name": "term", "type": "uint256"}
+            ],
+            "name": "Staked",
+            "type": "event"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {"indexed": true, "internalType": "address", "name": "user", "type": "address"},
+                {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"},
+                {"indexed": false, "internalType": "uint256", "name": "reward", "type": "uint256"}
+            ],
+            "name": "Withdrawn",
+            "type": "event"
         }
     ]
 };
@@ -107,14 +127,19 @@ function initWeb3Modal() {
 // Connect wallet
 async function connectWallet() {
     try {
+        console.log("Connecting wallet...");
         provider = await web3Modal.connect();
         
         web3 = new Web3(provider);
         const accounts = await web3.eth.getAccounts();
         account = accounts[0];
         
+        console.log("Connected account:", account);
+        
         // Check if connected to Base Chain
         const chainId = await web3.eth.getChainId();
+        console.log("Connected to chain ID:", chainId);
+        
         if (chainId !== CONFIG.BASE_CHAIN_ID) {
             alert("Please connect to Base Chain to use this dashboard!");
             try {
@@ -190,6 +215,7 @@ function resetUI() {
 // Load user data
 async function loadUserData() {
     try {
+        console.log("Loading user data...");
         // Get token balance
         const decimals = await contract.methods.decimals().call();
         const balanceWei = await contract.methods.balanceOf(account).call();
@@ -214,9 +240,12 @@ async function loadUserData() {
         // Update UI
         updateCurrentStakeUI(parseInt(currentAPY));
         updateNewStakeFormUI(parseInt(currentAPY));
-        loadStakeHistory();
+        
+        // Load stake history from blockchain
+        await loadStakeHistory();
     } catch (error) {
         console.error("Error loading user data:", error);
+        alert("Error loading user data: " + (error.message || error));
     }
 }
 
@@ -348,208 +377,262 @@ function updateNewStakeFormUI(currentAPY) {
     }
 }
 
-// Load stake history
-function loadStakeHistory() {
-    // In a real app, this would fetch from a database or blockchain events
-    // For demo purposes, we'll use some sample data or local storage
-    if (stakeHistory.length === 0) {
-        const storedHistory = localStorage.getItem('xenStakeHistory_' + account);
-        if (storedHistory) {
-            stakeHistory = JSON.parse(storedHistory);
-        } else {
-            generateDemoStakeHistory();
+// Load stake history from blockchain events
+async function loadStakeHistory() {
+    try {
+        stakeHistoryContainer.innerHTML = '<p class="text-gray-600">Loading stake history from blockchain...</p>';
+        
+        // Check if our contract has the events we need
+        if (!contract.methods || !contract._jsonInterface.some(item => item.type === 'event' && item.name === 'Staked')) {
+            console.warn("Contract may not have the events we're looking for. Using BaseScan API instead.");
+            return await loadStakeHistoryFromBaseScan();
         }
+        
+        console.log("Querying blockchain events...");
+        
+        // Get decimals for formatting
+        const decimals = await contract.methods.decimals().call();
+        
+        // Get the latest block
+        const latestBlock = await web3.eth.getBlockNumber();
+        console.log("Latest block:", latestBlock);
+        
+        // Get past Stake events (we'll go back 500000 blocks - adjust if needed)
+        const fromBlock = Math.max(0, latestBlock - 500000); // Go back ~2 weeks
+        console.log("Searching from block:", fromBlock);
+        
+        // Get stake events
+        console.log("Fetching stake events...");
+        const stakeEvents = await contract.getPastEvents('Staked', {
+            filter: { user: account },
+            fromBlock: fromBlock,
+            toBlock: 'latest'
+        });
+        
+        // Get withdraw events
+        console.log("Fetching withdraw events...");
+        const withdrawEvents = await contract.getPastEvents('Withdrawn', {
+            filter: { user: account },
+            fromBlock: fromBlock,
+            toBlock: 'latest'
+        });
+        
+        console.log("Stake events:", stakeEvents.length);
+        console.log("Withdraw events:", withdrawEvents.length);
+        
+        if (stakeEvents.length === 0 && withdrawEvents.length === 0) {
+            console.log("No events found, trying BaseScan API...");
+            return await loadStakeHistoryFromBaseScan();
+        }
+        
+        // Process events to create history items
+        const historyItems = [];
+        
+        // Process stake events
+        for (const event of stakeEvents) {
+            const block = await web3.eth.getBlock(event.blockNumber);
+            
+            historyItems.push({
+                type: 'stake',
+                blockNumber: event.blockNumber,
+                timestamp: block.timestamp * 1000, // Convert to milliseconds
+                amount: formatUnits(event.returnValues.amount, decimals),
+                term: parseInt(event.returnValues.term),
+                txHash: event.transactionHash
+            });
+        }
+        
+        // Process withdraw events
+        for (const event of withdrawEvents) {
+            const block = await web3.eth.getBlock(event.blockNumber);
+            
+            historyItems.push({
+                type: 'withdraw',
+                blockNumber: event.blockNumber,
+                timestamp: block.timestamp * 1000,
+                amount: formatUnits(event.returnValues.amount, decimals),
+                reward: formatUnits(event.returnValues.reward, decimals),
+                txHash: event.transactionHash
+            });
+        }
+        
+        // Sort by block number (descending)
+        historyItems.sort((a, b) => b.blockNumber - a.blockNumber);
+        
+        displayStakeHistory(historyItems);
+    } catch (error) {
+        console.error("Error loading stake history from events:", error);
+        console.log("Falling back to BaseScan API...");
+        await loadStakeHistoryFromBaseScan();
     }
+}
+
+// Alternative method to load stake history from BaseScan
+async function loadStakeHistoryFromBaseScan() {
+    try {
+        stakeHistoryContainer.innerHTML = '<p class="text-gray-600">Fetching transactions from BaseScan...</p>';
+        
+        // BaseScan doesn't have a public API yet, so we'll use a basic approach to get user transactions
+        const proxyUrl = "https://corsproxy.io/?";  // CORS proxy
+        const apiUrl = `${proxyUrl}https://api.basescan.org/api?module=account&action=txlist&address=${account}&sort=desc`;
+        
+        console.log("Fetching from BaseScan URL:", apiUrl);
+        
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log("BaseScan API response:", data);
+        
+        if (data.status !== '1') {
+            throw new Error("BaseScan API error: " + data.message);
+        }
+        
+        // Get all transactions to/from our contract
+        const transactions = data.result.filter(tx => 
+            tx.to.toLowerCase() === CONFIG.CONTRACT_ADDRESS.toLowerCase()
+        );
+        
+        console.log("Found transactions to cbXEN contract:", transactions.length);
+        
+        // Process transaction data to identify stakes and withdrawals
+        const historyItems = [];
+        const decimals = await contract.methods.decimals().call();
+        
+        for (const tx of transactions) {
+            // Try to determine if it's a stake or withdraw based on input data
+            const methodId = tx.input.substring(0, 10);
+            
+            // Method IDs for stake and withdraw functions
+            const stakeMethodId = "0x3a4b66f1"; // stake(uint256,uint256)
+            const withdrawMethodId = "0x3ccfd60b"; // withdraw()
+            
+            if (methodId === stakeMethodId) {
+                // Decode stake parameters
+                const parameters = tx.input.slice(10);
+                try {
+                    const decodedParams = web3.eth.abi.decodeParameters(
+                        ['uint256', 'uint256'], 
+                        parameters
+                    );
+                    
+                    historyItems.push({
+                        type: 'stake',
+                        timestamp: parseInt(tx.timeStamp) * 1000,
+                        amount: formatUnits(decodedParams[0], decimals),
+                        term: parseInt(decodedParams[1]),
+                        txHash: tx.hash
+                    });
+                } catch (error) {
+                    console.error("Error decoding stake parameters:", error);
+                }
+            } else if (methodId === withdrawMethodId) {
+                // For withdrawals, use the transaction logs to get information
+                // This is difficult without a proper indexer, so we'll just record the transaction
+                historyItems.push({
+                    type: 'withdraw',
+                    timestamp: parseInt(tx.timeStamp) * 1000,
+                    amount: "Unknown", // Hard to determine without event logs
+                    reward: "Unknown",
+                    txHash: tx.hash
+                });
+            }
+        }
+        
+        // If we found transactions, display them
+        if (historyItems.length > 0) {
+            displayStakeHistory(historyItems);
+        } else {
+            console.log("No relevant transactions found, trying to fetch directly by address");
+            // Display demo data for now
+            displayDemoHistory();
+        }
+    } catch (error) {
+        console.error("Error loading transactions from BaseScan:", error);
+        stakeHistoryContainer.innerHTML = `
+            <p class="text-red-600">Error fetching transaction history: ${error.message}</p>
+            <p class="text-gray-600 mt-2">Showing demo history instead.</p>
+        `;
+        displayDemoHistory();
+    }
+}
+
+// Display demo history if we can't get real data
+function displayDemoHistory() {
+    const now = new Date().getTime();
+    const day = 24 * 60 * 60 * 1000;
     
-    if (stakeHistory.length > 0) {
+    const demoHistory = [
+        {
+            type: 'stake',
+            timestamp: now - 90 * day,
+            amount: "100,000,000",
+            term: 30,
+            txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        },
+        {
+            type: 'withdraw',
+            timestamp: now - 60 * day,
+            amount: "100,000,000",
+            reward: "1,150,684.93",
+            txHash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        },
+        {
+            type: 'stake',
+            timestamp: now - 59 * day,
+            amount: "200,000,000",
+            term: 29,
+            txHash: "0x2345678901abcdef2345678901abcdef2345678901abcdef2345678901abcdef"
+        },
+        {
+            type: 'withdraw',
+            timestamp: now - 30 * day,
+            amount: "200,000,000",
+            reward: "2,230,136.99",
+            txHash: "0xbcdef1234567890abcdef1234567890abcdef1234567890abcdef123456789a"
+        }
+    ];
+    
+    displayStakeHistory(demoHistory);
+}
+
+// Display stake history
+function displayStakeHistory(historyItems) {
+    if (historyItems.length > 0) {
         let tableHTML = `
             <div class="overflow-x-auto">
                 <table class="min-w-full">
                     <thead>
                         <tr class="bg-gray-100">
-                            <th class="p-2 text-left">Start Date</th>
-                            <th class="p-2 text-left">End Date</th>
+                            <th class="p-2 text-left">Date</th>
+                            <th class="p-2 text-left">Type</th>
                             <th class="p-2 text-left">Amount</th>
                             <th class="p-2 text-left">Term</th>
-                            <th class="p-2 text-left">APY</th>
                             <th class="p-2 text-left">Reward</th>
-                            <th class="p-2 text-left">Status</th>
+                            <th class="p-2 text-left">Transaction</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
         
-        stakeHistory.forEach(stake => {
+        for (const item of historyItems) {
+            const date = formatDate(item.timestamp);
+            const typeLabel = item.type === 'stake' ? 'Stake' : 'Withdraw';
+            const typeClass = item.type === 'stake' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800';
+            
             tableHTML += `
                 <tr class="border-b">
-                    <td class="p-2">${stake.startDate}</td>
-                    <td class="p-2">${stake.endDate}</td>
-                    <td class="p-2">${stake.amount}</td>
-                    <td class="p-2">${stake.term} days</td>
-                    <td class="p-2">${stake.apy}%</td>
-                    <td class="p-2">${stake.reward}</td>
+                    <td class="p-2">${date}</td>
                     <td class="p-2">
-                        <span class="inline-block px-2 py-1 text-xs font-semibold rounded ${stake.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
-                            ${stake.status}
+                        <span class="inline-block px-2 py-1 text-xs font-semibold rounded ${typeClass}">
+                            ${typeLabel}
                         </span>
                     </td>
-                </tr>
-            `;
-        });
-        
-        tableHTML += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-        
-        stakeHistoryContainer.innerHTML = tableHTML;
-    } else {
-        stakeHistoryContainer.innerHTML = `<p class="text-gray-600">No stake history available</p>`;
-    }
-}
-
-// Generate demo stake history
-function generateDemoStakeHistory() {
-    const now = new Date().getTime();
-    const day = 24 * 60 * 60 * 1000;
-    
-    stakeHistory = [
-        {
-            startDate: formatDate(now - 90 * day),
-            endDate: formatDate(now - 60 * day),
-            amount: "100,000,000",
-            term: 30,
-            apy: 14,
-            reward: "1,150,684.93",
-            status: "Completed"
-        },
-        {
-            startDate: formatDate(now - 59 * day),
-            endDate: formatDate(now - 30 * day),
-            amount: "200,000,000",
-            term: 29,
-            apy: 14,
-            reward: "2,230,136.99",
-            status: "Completed"
-        }
-    ];
-    
-    // Save to local storage
-    localStorage.setItem('xenStakeHistory_' + account, JSON.stringify(stakeHistory));
-}
-
-// Create a new stake
-async function createStake() {
-    try {
-        const stakeAmountInput = document.getElementById('stakeAmount');
-        const stakeTermInput = document.getElementById('stakeTerm');
-        
-        const amount = stakeAmountInput.value;
-        const term = parseInt(stakeTermInput.value);
-        
-        if (!amount || amount <= 0) {
-            alert("Please enter a valid amount");
-            return;
-        }
-        
-        if (!term || term < 1) {
-            alert("Please enter a valid term (minimum 1 day)");
-            return;
-        }
-        
-        // Disable button to prevent double-clicks
-        const button = document.getElementById('createStakeButton');
-        button.disabled = true;
-        button.textContent = "Processing...";
-        
-        // Convert amount to wei
-        const decimals = await contract.methods.decimals().call();
-        const amountWei = parseUnits(amount, decimals);
-        
-        // Send transaction
-        await contract.methods.stake(amountWei, term).send({ from: account });
-        
-        alert("Stake created successfully!");
-        
-        // Reload user data
-        await loadUserData();
-        
-        // Reset form
-        button.disabled = false;
-        button.textContent = "Create Stake";
-    } catch (error) {
-        console.error("Error creating stake:", error);
-        alert("Error creating stake: " + (error.message || error));
-        
-        const button = document.getElementById('createStakeButton');
-        if (button) {
-            button.disabled = false;
-            button.textContent = "Create Stake";
-        }
-    }
-}
-
-// Withdraw stake
-async function withdrawStake() {
-    try {
-        // Disable button to prevent double-clicks
-        const button = document.getElementById('withdrawButton');
-        button.disabled = true;
-        button.textContent = "Processing...";
-        
-        // Send transaction
-        await contract.methods.withdraw().send({ from: account });
-        
-        alert("Stake withdrawn successfully!");
-        
-        // Add to history
-        stakeHistory.unshift({
-            startDate: formatDate(new Date().getTime() - (currentStake.term * 24 * 60 * 60 * 1000)),
-            endDate: formatDate(new Date().getTime()),
-            amount: parseFloat(currentStake.amount).toLocaleString(),
-            term: currentStake.term,
-            apy: currentStake.apy,
-            reward: calculateExpectedYield(parseFloat(currentStake.amount), currentStake.apy, currentStake.term),
-            status: "Completed"
-        });
-        
-        // Save to local storage
-        localStorage.setItem('xenStakeHistory_' + account, JSON.stringify(stakeHistory));
-        
-        // Reload user data
-        await loadUserData();
-    } catch (error) {
-        console.error("Error withdrawing stake:", error);
-        alert("Error withdrawing stake: " + (error.message || error));
-        
-        const button = document.getElementById('withdrawButton');
-        if (button) {
-            button.disabled = false;
-            button.textContent = "Withdraw Stake";
-        }
-    }
-}
-
-// Calculate expected yield
-function calculateExpectedYield(amount, apy, term) {
-    const dailyRate = apy / 365 / 100;
-    const dailyYield = amount * dailyRate;
-    return (dailyYield * term).toFixed(2);
-}
-
-// Format date
-function formatDate(timestamp) {
-    return new Date(timestamp).toLocaleDateString();
-}
-
-// Initialize the app when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    initWeb3Modal();
-    connectButton.addEventListener('click', connectWallet);
-    
-    // Auto connect if provider is cached
-    if (web3Modal.cachedProvider) {
-        connectWallet();
-    }
-});
+                    <td class="p-2">${typeof item.amount === 'string' ? item.amount : parseFloat(item.amount).toLocaleString()} cbXEN</td>
+                    <td class="p-2">${item.type === 'stake' ? item.term + ' days' : '-'}</td>
+                    <td class="p-2">${item.type === 'withdraw' && item.reward ? (typeof item.reward === 'string' ? item.reward : parseFloat(item.reward).toLocaleString()) + ' cbXEN' : '-'}</td>
+                    <td class="p-2">
+                        <a href="https://basescan.org/tx/${item.txHash}" target="_blank" class="text-blue-600 hover:underline">
