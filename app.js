@@ -179,7 +179,7 @@ async function connectWallet() {
             // Load user data
             await loadUserData();
             
-            // Setup event listeners for account and chain changes
+              // Setup event listeners for account and chain changes
             window.ethereum.on('accountsChanged', (accounts) => {
                 if (accounts.length === 0) {
                     // User disconnected wallet
@@ -192,4 +192,6 @@ async function connectWallet() {
                 }
             });
             
-            window.ethereum.
+            window.ethereum.on('chainChanged', () => {
+                window.location.reload();
+            });
