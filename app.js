@@ -159,39 +159,3 @@ async function connectWallet() {
                     }
                 } else {
                     alert(`You need to be on ${chainConfig.name} network to use this dashboard.`);
-                    return;
-                }
-            }
-            
-            // Initialize contract
-            contract = new web3.eth.Contract(CONTRACT_ABI, chainConfig.contractAddress);
-            
-            // Update UI
-            networkName.textContent = chainConfig.name;
-            accountAddress.textContent = `${account.slice(0, 6)}...${account.slice(-4)}`;
-            connectButton.classList.add('hidden');
-            accountInfo.classList.remove('hidden');
-            dashboardContent.classList.remove('hidden');
-            
-            // Add glow effect to current stake card
-            document.querySelector('.card').classList.add('glow-effect');
-            
-            // Load user data
-            await loadUserData();
-            
-              // Setup event listeners for account and chain changes
-            window.ethereum.on('accountsChanged', (accounts) => {
-                if (accounts.length === 0) {
-                    // User disconnected wallet
-                    resetUI();
-                } else {
-                    // Account changed
-                    account = accounts[0];
-                    accountAddress.textContent = `${account.slice(0, 6)}...${account.slice(-4)}`;
-                    loadUserData();
-                }
-            });
-            
-            window.ethereum.on('chainChanged', () => {
-                window.location.reload();
-            });
