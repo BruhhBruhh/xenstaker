@@ -506,7 +506,7 @@ async function scanRecentTransactions() {
 }
 
 // Display transaction history
-function displayTransactionHistory(transactions) {
+function displayStakeHistory(transactions) {
     if (transactions.length === 0) {
         stakeHistoryContainer.innerHTML = `
             <p class="text-gray-600">No transactions found. View your transaction history on Basescan:</p>
