@@ -1,12 +1,3 @@
-// Make sure ethers is available before proceeding
-console.log("App.js loaded, checking for ethers...");
-if (typeof ethers === 'undefined') {
-    console.error("Ethers library not found!");
-    alert("Critical error: Ethereum library not found. Please refresh the page.");
-} else {
-    console.log("Ethers library found, version:", ethers.version);
-}
-
 // Config
 const CONFIG = {
     CONTRACT_ADDRESS: '0xffcbF84650cE02DaFE96926B37a0ac5E34932fa5',
@@ -24,23 +15,61 @@ const CONFIG = {
         rpcUrls: ['https://mainnet.base.org'],
         blockExplorerUrls: ['https://basescan.org/'],
     },
+    // Simplified ABI with essential functions
     CONTRACT_ABI: [
-        "function getUserStake() external view returns (tuple(uint256 term, uint256 maturityTs, uint256 amount, uint256 apy))",
-        "function balanceOf(address account) view returns (uint256)",
-        "function stake(uint256 amount, uint256 term) external",
-        "function withdraw() external",
-        "function getCurrentAPY() external view returns (uint256)",
-        "function symbol() external view returns (string)",
-        "function decimals() external view returns (uint8)",
-        "function name() external view returns (string)",
-        "function getUserMint() external view returns (tuple(address user, uint256 term, uint256 maturityTs, uint256 rank, uint256 amplifier, uint256 eaaRate))",
-        "function totalXenStaked() external view returns (uint256)",
-        "function globalRank() external view returns (uint256)"
+        {
+            "inputs": [],
+            "name": "getUserStake",
+            "outputs": [{"components": [{"internalType": "uint256", "name": "term", "type": "uint256"},{"internalType": "uint256", "name": "maturityTs", "type": "uint256"},{"internalType": "uint256", "name": "amount", "type": "uint256"},{"internalType": "uint256", "name": "apy", "type": "uint256"}], "internalType": "struct XENCrypto.StakeInfo", "name": "", "type": "tuple"}],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+            "name": "balanceOf",
+            "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"},{"internalType": "uint256", "name": "term", "type": "uint256"}],
+            "name": "stake",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "withdraw",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "getCurrentAPY",
+            "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "decimals",
+            "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
+            "stateMutability": "view",
+            "type": "function"
+        }
     ]
 };
 
 // Global variables
-let provider, signer, contract, account, currentStake, stakeHistory = [];
+let web3;
+let web3Modal;
+let provider;
+let account;
+let contract;
+let currentStake;
+let stakeHistory = [];
 
 // DOM Elements
 const connectButton = document.getElementById('connectButton');
@@ -53,62 +82,95 @@ const currentStakeInfo = document.getElementById('currentStakeInfo');
 const newStakeForm = document.getElementById('newStakeForm');
 const stakeHistoryContainer = document.getElementById('stakeHistory');
 
-// Initialize the app
-async function init() {
-    connectButton.addEventListener('click', connectWallet);
-    
-    // Check if already connected
-    if (window.ethereum && window.ethereum.selectedAddress) {
-        connectWallet();
-    }
-    
-    // Listen for account changes
-    if (window.ethereum) {
-        window.ethereum.on('accountsChanged', (accounts) => {
-            if (accounts.length > 0) {
-                connectWallet();
-            } else {
-                resetUI();
+// Initialize Web3Modal
+function initWeb3Modal() {
+    const providerOptions = {
+        walletconnect: {
+            package: WalletConnectProvider.default,
+            options: {
+                rpc: {
+                    [CONFIG.BASE_CHAIN_ID]: CONFIG.RPC_URL
+                },
+                chainId: CONFIG.BASE_CHAIN_ID
             }
-        });
-        
-        window.ethereum.on('chainChanged', () => {
-            window.location.reload();
-        });
-    }
+        }
+    };
+
+    web3Modal = new Web3Modal.default({
+        cacheProvider: true,
+        providerOptions,
+        disableInjectedProvider: false,
+        theme: "dark"
+    });
 }
 
 // Connect wallet
 async function connectWallet() {
     try {
-        if (window.ethereum) {
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            await window.ethereum.request({ method: 'eth_requestAccounts' });
-            signer = provider.getSigner();
-            account = await signer.getAddress();
-            
-            // Check if we're on Base Chain
-            const network = await provider.getNetwork();
-            if (network.chainId !== CONFIG.BASE_CHAIN_ID) {
-                await switchToBaseChain();
+        provider = await web3Modal.connect();
+        
+        web3 = new Web3(provider);
+        const accounts = await web3.eth.getAccounts();
+        account = accounts[0];
+        
+        // Check if connected to Base Chain
+        const chainId = await web3.eth.getChainId();
+        if (chainId !== CONFIG.BASE_CHAIN_ID) {
+            alert("Please connect to Base Chain to use this dashboard!");
+            try {
+                await web3.currentProvider.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: CONFIG.BASE_CHAIN_ID_HEX }]
+                });
+            } catch (switchError) {
+                // If Base Chain is not added, prompt to add it
+                if (switchError.code === 4902) {
+                    try {
+                        await web3.currentProvider.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [CONFIG.NETWORK_METADATA]
+                        });
+                    } catch (addError) {
+                        console.error("Failed to add Base Chain", addError);
+                    }
+                }
+                console.error("Failed to switch to Base Chain", switchError);
+                return;
             }
-            
-            networkName.textContent = 'Base';
-            accountAddress.textContent = `${account.slice(0, 6)}...${account.slice(-4)}`;
-            
-            // Initialize contract
-            contract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, CONFIG.CONTRACT_ABI, signer);
-            
-            // Load user data
-            await loadUserData();
-            
-            // Update UI
-            connectButton.classList.add('hidden');
-            accountInfo.classList.remove('hidden');
-            dashboardContent.classList.remove('hidden');
-        } else {
-            alert("Please install MetaMask or another Web3 wallet!");
         }
+        
+        // Initialize contract
+        contract = new web3.eth.Contract(CONFIG.CONTRACT_ABI, CONFIG.CONTRACT_ADDRESS);
+        
+        // Update UI
+        networkName.textContent = 'Base';
+        accountAddress.textContent = `${account.slice(0, 6)}...${account.slice(-4)}`;
+        connectButton.classList.add('hidden');
+        accountInfo.classList.remove('hidden');
+        dashboardContent.classList.remove('hidden');
+        
+        // Load user data
+        await loadUserData();
+        
+        // Subscribe to events
+        provider.on("accountsChanged", (accounts) => {
+            if (accounts.length > 0) {
+                account = accounts[0];
+                accountAddress.textContent = `${account.slice(0, 6)}...${account.slice(-4)}`;
+                loadUserData();
+            } else {
+                resetUI();
+            }
+        });
+        
+        provider.on("chainChanged", (chainId) => {
+            window.location.reload();
+        });
+        
+        provider.on("disconnect", () => {
+            resetUI();
+        });
+        
     } catch (error) {
         console.error("Error connecting wallet:", error);
         alert("Error connecting wallet: " + (error.message || error));
@@ -120,65 +182,52 @@ function resetUI() {
     connectButton.classList.remove('hidden');
     accountInfo.classList.add('hidden');
     dashboardContent.classList.add('hidden');
-}
-
-// Switch to Base Chain
-async function switchToBaseChain() {
-    try {
-        await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: CONFIG.BASE_CHAIN_ID_HEX }],
-        });
-    } catch (error) {
-        // If Base Chain is not added to MetaMask, prompt to add it
-        if (error.code === 4902) {
-            try {
-                await window.ethereum.request({
-                    method: 'wallet_addEthereumChain',
-                    params: [CONFIG.NETWORK_METADATA],
-                });
-            } catch (addError) {
-                console.error("Failed to add Base Chain", addError);
-                alert("Please add Base Chain to your wallet manually.");
-            }
-        } else {
-            console.error("Failed to switch to Base Chain", error);
-            alert("Please switch to Base Chain to use this dashboard.");
-        }
-    }
+    account = null;
+    provider = null;
+    contract = null;
 }
 
 // Load user data
 async function loadUserData() {
     try {
         // Get token balance
-        const decimals = await contract.decimals();
-        const balanceWei = await contract.balanceOf(account);
-        const balanceFormatted = ethers.utils.formatUnits(balanceWei, decimals);
+        const decimals = await contract.methods.decimals().call();
+        const balanceWei = await contract.methods.balanceOf(account).call();
+        const balanceFormatted = formatUnits(balanceWei, decimals);
         tokenBalance.textContent = parseFloat(balanceFormatted).toLocaleString() + ' cbXEN';
         
         // Get current stake
-        const userStake = await contract.getUserStake();
-        const currentAPY = await contract.getCurrentAPY();
+        const userStake = await contract.methods.getUserStake().call({ from: account });
+        const currentAPY = await contract.methods.getCurrentAPY().call();
         
-        if (userStake.amount.gt(0)) {
+        if (parseInt(userStake.amount) > 0) {
             currentStake = {
-                term: userStake.term.toNumber(),
-                maturityTs: userStake.maturityTs.toNumber() * 1000, // Convert to milliseconds
-                amount: ethers.utils.formatUnits(userStake.amount, decimals),
-                apy: userStake.apy.toNumber()
+                term: parseInt(userStake.term),
+                maturityTs: parseInt(userStake.maturityTs) * 1000, // Convert to milliseconds
+                amount: formatUnits(userStake.amount, decimals),
+                apy: parseInt(userStake.apy)
             };
         } else {
             currentStake = null;
         }
         
         // Update UI
-        updateCurrentStakeUI(currentAPY.toNumber());
-        updateNewStakeFormUI(currentAPY.toNumber());
+        updateCurrentStakeUI(parseInt(currentAPY));
+        updateNewStakeFormUI(parseInt(currentAPY));
         loadStakeHistory();
     } catch (error) {
         console.error("Error loading user data:", error);
     }
+}
+
+// Format units (similar to ethers.utils.formatUnits)
+function formatUnits(value, decimals) {
+    return (value / Math.pow(10, decimals)).toString();
+}
+
+// Parse units (similar to ethers.utils.parseUnits)
+function parseUnits(value, decimals) {
+    return Math.floor(parseFloat(value) * Math.pow(10, decimals)).toString();
 }
 
 // Update current stake UI
@@ -302,9 +351,14 @@ function updateNewStakeFormUI(currentAPY) {
 // Load stake history
 function loadStakeHistory() {
     // In a real app, this would fetch from a database or blockchain events
-    // For demo purposes, we'll use some sample data
+    // For demo purposes, we'll use some sample data or local storage
     if (stakeHistory.length === 0) {
-        generateDemoStakeHistory();
+        const storedHistory = localStorage.getItem('xenStakeHistory_' + account);
+        if (storedHistory) {
+            stakeHistory = JSON.parse(storedHistory);
+        } else {
+            generateDemoStakeHistory();
+        }
     }
     
     if (stakeHistory.length > 0) {
@@ -380,6 +434,9 @@ function generateDemoStakeHistory() {
             status: "Completed"
         }
     ];
+    
+    // Save to local storage
+    localStorage.setItem('xenStakeHistory_' + account, JSON.stringify(stakeHistory));
 }
 
 // Create a new stake
@@ -407,12 +464,11 @@ async function createStake() {
         button.textContent = "Processing...";
         
         // Convert amount to wei
-        const decimals = await contract.decimals();
-        const amountWei = ethers.utils.parseUnits(amount, decimals);
+        const decimals = await contract.methods.decimals().call();
+        const amountWei = parseUnits(amount, decimals);
         
         // Send transaction
-        const tx = await contract.stake(amountWei, term);
-        await tx.wait();
+        await contract.methods.stake(amountWei, term).send({ from: account });
         
         alert("Stake created successfully!");
         
@@ -443,8 +499,7 @@ async function withdrawStake() {
         button.textContent = "Processing...";
         
         // Send transaction
-        const tx = await contract.withdraw();
-        await tx.wait();
+        await contract.methods.withdraw().send({ from: account });
         
         alert("Stake withdrawn successfully!");
         
@@ -458,6 +513,9 @@ async function withdrawStake() {
             reward: calculateExpectedYield(parseFloat(currentStake.amount), currentStake.apy, currentStake.term),
             status: "Completed"
         });
+        
+        // Save to local storage
+        localStorage.setItem('xenStakeHistory_' + account, JSON.stringify(stakeHistory));
         
         // Reload user data
         await loadUserData();
@@ -486,4 +544,12 @@ function formatDate(timestamp) {
 }
 
 // Initialize the app when the page loads
-window.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    initWeb3Modal();
+    connectButton.addEventListener('click', connectWallet);
+    
+    // Auto connect if provider is cached
+    if (web3Modal.cachedProvider) {
+        connectWallet();
+    }
+});
