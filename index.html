@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>cbXEN Staking Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" type="application/javascript"></script>
+    <!-- No ethers.js here - we'll load it in a different way -->
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen p-4">
@@ -54,7 +54,30 @@
         </div>
     </div>
 
+    <!-- Load ethers.js first, then wait for it to load before loading app.js -->
+    <script>
+        // Create a script element for ethers.js
+        var ethersScript = document.createElement('script');
+        ethersScript.src = "https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js";
+        ethersScript.type = "text/javascript";
+        
+        // Only load app.js after ethers.js has loaded
+        ethersScript.onload = function() {
+            console.log("Ethers.js loaded successfully");
+            // Now load app.js
+            var appScript = document.createElement('script');
+            appScript.src = "app.js";
+            document.body.appendChild(appScript);
+        };
+        
+        // Handle errors
+        ethersScript.onerror = function() {
+            console.error("Failed to load ethers.js");
+            alert("Failed to load essential components. Please refresh the page or try again later.");
+        };
+        
+        // Add ethers.js script to the document
+        document.body.appendChild(ethersScript);
+    </script>
 </body>
-<script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" type="text/javascript"></script>
-<script src="app.js" defer></script>
 </html>
