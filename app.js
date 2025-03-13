@@ -1,4 +1,5 @@
 // Config
+
 const CONFIG = {
     CONTRACT_ADDRESS: '0xffcbF84650cE02DaFE96926B37a0ac5E34932fa5',
     BASE_CHAIN_ID: 8453,
