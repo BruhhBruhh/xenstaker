@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>cbXEN Staking Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <!-- No ethers.js here - we'll load it in a different way -->
+    <!-- Web3Modal dependencies -->
+    <script src="https://unpkg.com/web3@1.8.0/dist/web3.min.js"></script>
+    <script src="https://unpkg.com/web3modal@1.9.12/dist/index.js"></script>
+    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen p-4">
@@ -31,7 +34,7 @@
                 </div>
             </div>
             
-            <!-- These sections will be populated by JavaScript -->
+            <!-- Dashboard Content -->
             <div id="dashboardContent" class="hidden">
                 <!-- Current Stake -->
                 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -54,30 +57,6 @@
         </div>
     </div>
 
-    <!-- Load ethers.js first, then wait for it to load before loading app.js -->
-    <script>
-        // Create a script element for ethers.js
-        var ethersScript = document.createElement('script');
-        ethersScript.src = "https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js";
-        ethersScript.type = "text/javascript";
-        
-        // Only load app.js after ethers.js has loaded
-        ethersScript.onload = function() {
-            console.log("Ethers.js loaded successfully");
-            // Now load app.js
-            var appScript = document.createElement('script');
-            appScript.src = "app.js";
-            document.body.appendChild(appScript);
-        };
-        
-        // Handle errors
-        ethersScript.onerror = function() {
-            console.error("Failed to load ethers.js");
-            alert("Failed to load essential components. Please refresh the page or try again later.");
-        };
-        
-        // Add ethers.js script to the document
-        document.body.appendChild(ethersScript);
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
