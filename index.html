@@ -1,59 +1,537 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>cbXEN Staking Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <!-- Web3Modal dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/web3@1.8.0/dist/web3.min.js"></script>
     <script src="https://unpkg.com/web3modal@1.9.12/dist/index.js"></script>
     <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
-</head>
-<body class="bg-gray-100">
-    <div class="min-h-screen p-4">
-        <div class="max-w-4xl mx-auto">
-            <h1 class="text-3xl font-bold mb-6 text-center">cbXEN Staking Dashboard</h1>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <!-- Google Font - Cyberpunk style -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00f0;
+            --neon-purple: #c300ff;
+            --neon-green: #00ff66;
+            --neon-yellow: #f5ff00;
+            --bg-dark: #0c0c14;
+            --bg-darker: #07070f;
+            --bg-card: #12122a;
+            --text-primary: #e0e0ff;
+            --text-secondary: #9090bb;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(circle at 25% 10%, rgba(0, 243, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 75% 75%, rgba(195, 0, 255, 0.05) 0%, transparent 40%);
+            color: var(--text-primary);
+            font-family: 'Rajdhani', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        h1, h2, h3 {
+            font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--neon-blue);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.7);
+        }
+        
+        /* Chain selector */
+        .chain-selector {
+            display: flex;
+            align-items: center;
+            margin-right: 1rem;
+        }
+        
+        .chain-selector .chain-option {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            margin: 0 0.25rem;
+            border-radius: 50%;
+            background: var(--bg-darker);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .chain-selector .chain-option:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+        }
+        
+        .chain-selector .chain-option.active {
+            border: 2px solid var(--neon-blue);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+        }
+        
+        .chain-selector .chain-option img {
+            width: 24px;
+            height: 24px;
+        }
+        
+        /* Connect button */
+        .connect-button {
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+        
+        .connect-button:hover {
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.6);
+            transform: translateY(-2px);
+        }
+        
+        .connect-button::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transform: rotate(45deg);
+            transition: all 0.5s ease;
+        }
+        
+        .connect-button:hover::after {
+            left: 100%;
+        }
+        
+        /* Account info */
+        .account-info {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(18, 18, 42, 0.7);
+            border-radius: 50px;
+            border: 1px solid rgba(0, 243, 255, 0.3);
+        }
+        
+        .account-address {
+            margin-left: 0.5rem;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+        }
+        
+        .account-balance {
+            margin-left: 1rem;
+            padding-left: 1rem;
+            border-left: 1px solid rgba(0, 243, 255, 0.3);
+            font-weight: 600;
+            color: var(--neon-green);
+        }
+        
+        .account-balance span {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+        
+        /* Main content */
+        .main-content {
+            padding: 2rem 0;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: var(--neon-blue);
+            position: relative;
+            display: inline-block;
+        }
+        
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(to right, var(--neon-blue), transparent);
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            position: relative;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 243, 255, 0.1);
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 243, 255, 0.3);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            z-index: -1;
+            background: linear-gradient(45deg, transparent, rgba(0, 243, 255, 0.05), transparent);
+            pointer-events: none;
+        }
+        
+        /* Grid layout */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+        
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+        
+        /* Stat box */
+        .stat-box {
+            background: rgba(12, 12, 20, 0.6);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            border: 1px solid rgba(144, 144, 187, 0.1);
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--neon-blue);
+        }
+        
+        .stat-highlight {
+            color: var(--neon-green);
+        }
+        
+        /* Form elements */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-control {
+            width: 100%;
+            background: rgba(12, 12, 20, 0.8);
+            border: 1px solid rgba(144, 144, 187, 0.2);
+            border-radius: 5px;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--neon-blue);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        }
+        
+        /* Preview box */
+        .preview-box {
+            background: rgba(12, 12, 20, 0.5);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .preview-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+        
+        .preview-label {
+            color: var(--text-secondary);
+        }
+        
+        .preview-value {
+            color: var(--neon-green);
+            font-weight: 600;
+        }
+        
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        
+        .btn-block {
+            display: block;
+            width: 100%;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+            color: white;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+        
+        .btn-primary:hover {
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.6);
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: linear-gradient(90deg, var(--neon-green), var(--neon-blue));
+            color: white;
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.3);
+        }
+        
+        .btn-success:hover {
+            box-shadow: 0 0 25px rgba(0, 255, 102, 0.6);
+            transform: translateY(-2px);
+        }
+        
+        .btn-disabled {
+            background: rgba(144, 144, 187, 0.2);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+        }
+        
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            background: rgba(12, 12, 20, 0.6);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        
+        .table tr {
+            border-bottom: 1px solid rgba(144, 144, 187, 0.1);
+        }
+        
+        .table td {
+            padding: 0.75rem 1rem;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .badge-stake {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--neon-blue);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+        }
+        
+        .badge-withdraw {
+            background: rgba(0, 255, 102, 0.1);
+            color: var(--neon-green);
+            border: 1px solid rgba(0, 255, 102, 0.2);
+        }
+        
+        .tx-link {
+            color: var(--neon-blue);
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .tx-link:hover {
+            color: var(--neon-purple);
+            text-decoration: underline;
+        }
+        
+        /* Animation for glowing effects */
+        @keyframes glow {
+            0% {
+                box-shadow: 0 0 5px rgba(0, 243, 255, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(0, 243, 255, 0.5), 0 0 40px rgba(0, 243, 255, 0.2);
+            }
+            100% {
+                box-shadow: 0 0 5px rgba(0, 243, 255, 0.3);
+            }
+        }
+        
+        .glow-effect {
+            animation: glow 3s infinite;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .grid-2, .grid-4 {
+                grid-template-columns: 1fr;
+            }
             
-            <!-- Wallet Connection -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <button id="connectButton" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded">
-                    Connect Wallet
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .chain-selector {
+                margin-right: 0;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="logo">cbXEN <span style="font-size: 0.7em; vertical-align: super;">STAKE</span></h1>
+            
+            <div style="display: flex; align-items: center;">
+                <!-- Chain selector -->
+                <div class="chain-selector">
+                    <div class="chain-option" data-chain="ethereum" title="Ethereum">
+                        <img src="https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=025" alt="ETH">
+                    </div>
+                    <div class="chain-option active" data-chain="base" title="Base">
+                        <img src="https://cryptologos.cc/logos/base-logo.svg?v=025" alt="BASE">
+                    </div>
+                    <div class="chain-option" data-chain="optimism" title="Optimism">
+                        <img src="https://cryptologos.cc/logos/optimism-op-logo.svg?v=025" alt="OP">
+                    </div>
+                    <div class="chain-option" data-chain="avalanche" title="Avalanche">
+                        <img src="https://cryptologos.cc/logos/avalanche-avax-logo.svg?v=025" alt="AVAX">
+                    </div>
+                    <div class="chain-option" data-chain="polygon" title="Polygon">
+                        <img src="https://cryptologos.cc/logos/polygon-matic-logo.svg?v=025" alt="MATIC">
+                    </div>
+                    <div class="chain-option" data-chain="bsc" title="Binance Smart Chain">
+                        <img src="https://cryptologos.cc/logos/bnb-bnb-logo.svg?v=025" alt="BSC">
+                    </div>
+                </div>
+                
+                <!-- Wallet connection -->
+                <button id="connectButton" class="connect-button">
+                    <i class="fas fa-wallet mr-2"></i> Connect Wallet
                 </button>
-                <div id="accountInfo" class="hidden">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <p class="text-sm text-gray-600">Connected to <span id="networkName"></span></p>
-                            <p class="font-medium" id="accountAddress"></p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-sm text-gray-600">Your cbXEN Balance</p>
-                            <p class="font-medium" id="tokenBalance">0</p>
-                        </div>
+                
+                <div id="accountInfo" class="account-info hidden">
+                    <div>
+                        <span id="networkName" class="network-badge"></span>
+                        <span id="accountAddress" class="account-address"></span>
+                    </div>
+                    <div id="tokenBalance" class="account-balance">
+                        <span>Balance</span>
+                        <div class="balance-value">0 cbXEN</div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Dashboard Content -->
-            <div id="dashboardContent" class="hidden">
+        </div>
+        
+        <div id="dashboardContent" class="main-content hidden">
+            <div class="grid-2">
                 <!-- Current Stake -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Current Stake</h2>
+                <div class="card glow-effect">
+                    <h2 class="section-title">Current Stake</h2>
                     <div id="currentStakeInfo"></div>
                 </div>
                 
                 <!-- Create New Stake -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Create New Stake</h2>
+                <div class="card">
+                    <h2 class="section-title">Create New Stake</h2>
                     <div id="newStakeForm"></div>
                 </div>
-                
-                <!-- Stake History -->
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <h2 class="text-xl font-semibold mb-4">Stake History</h2>
-                    <div id="stakeHistory"></div>
-                </div>
+            </div>
+            
+            <!-- Stake History -->
+            <div class="card">
+                <h2 class="section-title">Stake History</h2>
+                <div id="stakeHistory"></div>
             </div>
         </div>
     </div>
