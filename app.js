@@ -1,3 +1,19 @@
+// Wait for ethers to be available
+function waitForEthers() {
+  if (typeof ethers !== 'undefined') {
+    // Initialize your app
+    init();
+  } else {
+    // Check again in 100ms
+    setTimeout(waitForEthers, 100);
+  }
+}
+
+// Start checking
+waitForEthers();
+
+// Then place your init function and other code after this
+
 // Config
 const CONFIG = {
     CONTRACT_ADDRESS: '0xffcbF84650cE02DaFE96926B37a0ac5E34932fa5',
